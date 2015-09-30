@@ -55,6 +55,7 @@ import com.thoughtworks.go.presentation.pipelinehistory.StageInstanceModel;
 import com.thoughtworks.go.presentation.pipelinehistory.StageInstanceModels;
 import com.thoughtworks.go.server.cache.GoCache;
 import com.thoughtworks.go.server.database.DatabaseStrategy;
+import com.thoughtworks.go.server.database.cassandra.CassandraDatabase;
 import com.thoughtworks.go.server.domain.Username;
 import com.thoughtworks.go.server.persistence.MaterialRepository;
 import com.thoughtworks.go.server.service.InstanceFactory;
@@ -145,6 +146,7 @@ public class PipelineSqlMapDaoIntegrationTest {
         GoConfigFileHelper configHelper = new GoConfigFileHelper();
         configHelper.usingCruiseConfigDao(goConfigDao);
         u = new ScheduleTestUtil(transactionTemplate, materialRepository, dbHelper, configHelper);
+        CassandraDatabase.getConnection().execute("TRUNCATE gocd.pipelines");
     }
 
     @After

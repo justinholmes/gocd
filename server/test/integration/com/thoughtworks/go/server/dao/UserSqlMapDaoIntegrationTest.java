@@ -50,7 +50,7 @@ import static org.junit.matchers.JUnitMatchers.hasItems;
         "classpath:WEB-INF/applicationContext-acegi-security.xml"
 })
 public class UserSqlMapDaoIntegrationTest {
-    @Autowired private UserSqlMapDao userDao;
+    @Autowired private UserDao userDao;
     @Autowired private DatabaseAccessHelper dbHelper;
     @Autowired private SessionFactory sessionFactory;
 

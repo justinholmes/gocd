@@ -16,6 +16,8 @@
 
 package com.thoughtworks.go.server.dao;
 
+import com.datastax.driver.mapping.Mapper;
+import com.datastax.driver.mapping.MappingManager;
 import com.ibatis.sqlmap.client.SqlMapClient;
 import com.rits.cloning.Cloner;
 import com.thoughtworks.go.config.CaseInsensitiveString;
@@ -30,6 +32,8 @@ import com.thoughtworks.go.domain.materials.dependency.DependencyMaterialRevisio
 import com.thoughtworks.go.presentation.pipelinehistory.PipelineInstanceModel;
 import com.thoughtworks.go.presentation.pipelinehistory.PipelineInstanceModels;
 import com.thoughtworks.go.server.cache.GoCache;
+import com.thoughtworks.go.server.dao.accessors.PipelineAccessor;
+import com.thoughtworks.go.server.database.cassandra.CassandraDatabase;
 import com.thoughtworks.go.server.domain.StageStatusListener;
 import com.thoughtworks.go.server.initializers.Initializer;
 import com.thoughtworks.go.server.persistence.MaterialRepository;
@@ -71,6 +75,9 @@ public class PipelineSqlMapDao extends SqlMapClientDaoSupport implements Initial
     private final ReadWriteLock activePipelineRWLock = new ReentrantReadWriteLock();
     private final Lock activePipelineReadLock = activePipelineRWLock.readLock();
     private final Lock activePipelineWriteLock = activePipelineRWLock.writeLock();
+    private final MappingManager mappingManager = new MappingManager(CassandraDatabase.getConnection());
+    private final Mapper<PipelineCassandraData> pipelineCassandraDataMapper = new MappingManager(CassandraDatabase.getConnection()).mapper(PipelineCassandraData.class);
+    private final PipelineAccessor pipelineAccessor = mappingManager.createAccessor(PipelineAccessor.class);
 
     @Autowired
     public PipelineSqlMapDao(StageDao stageDao, MaterialRepository materialRepository, GoCache goCache, EnvironmentVariableDao environmentVariableDao, TransactionTemplate transactionTemplate,
@@ -114,18 +121,29 @@ public class PipelineSqlMapDao extends SqlMapClientDaoSupport implements Initial
                 Long pipelineId = (Long) getSqlMapClientTemplate().insert("insertPipeline", pipeline);
                 savePipelineMaterialRevisions(pipeline, pipelineId);
                 environmentVariableDao.save(pipelineId, EnvironmentVariableSqlMapDao.EnvironmentVariableType.Trigger, pipeline.scheduleTimeVariables());
+                savePipelineInfoToCassandra(pipeline);
                 return pipeline;
             }
         });
     }
 
+    private void savePipelineInfoToCassandra(Pipeline pipeline) {
+        pipelineCassandraDataMapper.save(new PipelineCassandraData(pipeline));
+    }
+
+    private Integer getCassandraCounter(String name) {
+        PipelineCassandraData pipelineByName = pipelineAccessor.getPipelineByName(name);
+        return pipelineByName == null ? 0: pipelineByName.getCounter();
+    }
+
 
     public Integer getCounterForPipeline(String name) {
-        Integer counter = (Integer) getSqlMapClientTemplate().queryForObject("getCounterForPipeline", name);
-        return counter == null ? 0 : counter;
+        Integer cassandraCounter = getCassandraCounter(name);
+        return cassandraCounter == null ? 0 : cassandraCounter;
     }
 
     public void insertOrUpdatePipelineCounter(Pipeline pipeline, Integer lastCount, Integer newCount) {
+        savePipelineInfoToCassandra(pipeline);
         Map<String, Object> args = arguments("pipelineName", pipeline.getName()).and("count", newCount).asMap();
         Integer hasPipelineRow = (Integer) getSqlMapClientTemplate().queryForObject("hasPipelineInfoRow", pipeline.getName());
         if (hasPipelineRow == 0) {
